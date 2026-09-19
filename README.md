@@ -1,182 +1,221 @@
 # Water Quality Monitoring System
 
-An Arduino-based water quality monitoring system that measures TDS, turbidity, temperature, and water level in real time.
+An Arduino-based water quality monitoring system designed and implemented to measure TDS, turbidity, temperature, and water level in real time.
 
-The system processes sensor readings, displays the results on an LCD, provides LED and buzzer alerts, and sends data to the Arduino IoT Cloud for remote monitoring. :contentReference[oaicite:0]{index=0}
+The system processes sensor readings, displays the results locally on an LCD, provides LED and buzzer alerts, and sends the measurements to the Arduino IoT Cloud for remote monitoring.
+
+## System Overview
+
+![Water Quality Monitoring System](images/IMG_0784.jpeg)
+
+The system integrates multiple sensors with an Arduino UNO R4 WiFi to continuously monitor different water conditions.
+
+The main components include:
+
+- Arduino UNO R4 WiFi
+- TDS sensor
+- Turbidity sensor
+- Waterproof temperature sensor
+- Water level sensor
+- I2C LCD display
+- LED indicators
+- Buzzer
 
 ## Features
 
-- Real-time TDS monitoring
+- Real-time TDS measurement
 - Turbidity measurement and classification
-- Water temperature measurement
+- Water temperature monitoring
 - Water level detection
-- LCD display
+- LCD display for local monitoring
 - LED status indicators
 - Buzzer warning system
 - Arduino IoT Cloud integration
 - Sensor filtering and averaging
 - Temperature compensation for TDS readings
 
-## Components
+## Hardware Prototype
 
-- Arduino board
-- TDS sensor
-- Turbidity sensor
-- DS18B20 temperature sensor
-- Water level sensor
-- I2C LCD
-- LEDs
-- Buzzer
-- Breadboard
-- Jumper wires
+![Complete System](images/Screenshot%202026-09-19%20193431.png)
 
-The project combines all of these components into one monitoring system. :contentReference[oaicite:1]{index=1}
+The prototype combines the sensors, Arduino board, LCD, LEDs, and buzzer into a single embedded monitoring system.
 
-## How It Works
+The Arduino continuously collects measurements from the sensors, processes them, displays the readings locally, and sends the data to the IoT dashboard.
 
-The Arduino reads data from the connected sensors and processes each measurement.
+## LCD Output
 
-The system monitors:
+![LCD Output](images/IMG_0786.jpeg)
 
-- TDS
-- Turbidity
-- Temperature
+The LCD provides real-time feedback directly from the system.
+
+The display alternates between two screens every three seconds.
+
+### Screen 1
+
+Displays:
+
+- TDS value
+- TDS classification
+- Turbidity percentage
+- Turbidity classification
+
+### Screen 2
+
+Displays:
+
+- Water temperature
 - Water level
 
-Temperature compensation is applied to the TDS reading to improve stability.
+This allows multiple measurements to be displayed using the same LCD.
 
-The turbidity sensor reading is converted into a percentage and classified as:
+## Sensor Measurements
+
+The system monitors four main water parameters.
+
+### TDS
+
+The TDS sensor measures Total Dissolved Solids in the water.
+
+Instead of relying on a single analog reading, the system collects multiple ADC samples. The samples are sorted, extreme values are removed, and the remaining values are averaged.
+
+Temperature compensation is then applied before calculating the final TDS value.
+
+The TDS reading is classified as:
+
+- LOW
+- MEDIUM
+- HIGH
+
+### Turbidity
+
+The turbidity sensor measures water clarity using an analog signal.
+
+The reading is converted into a percentage and classified as:
 
 - CLEAR
 - CLOUDY
 - DIRTY
 
-The water level is classified as:
+### Temperature
+
+A waterproof DS18B20 temperature sensor measures water temperature in degrees Celsius.
+
+The measured temperature is also used to compensate the TDS calculation.
+
+### Water Level
+
+The water level sensor detects the amount of water present and classifies it as:
 
 - LOW
 - MEDIUM
 - HIGH
 - No water
 
-The LCD switches between sensor readings every three seconds. :contentReference[oaicite:2]{index=2}
+## Sensor Setup
+
+![Sensor Setup](images/Screenshot%202026-09-19%20193451.png)
+
+The system uses separate sensors for different water measurements.
+
+The TDS sensor measures dissolved solids, the turbidity sensor measures water clarity, the waterproof temperature probe measures temperature, and the water-level sensor detects the amount of water present.
+
+## Circuit and Hardware Integration
+
+![Circuit and Wiring](images/Screenshot%202026-09-19%20193442.png)
+
+One of the main parts of the project was integrating several sensors and outputs into one system.
+
+Each sensor has different reading and processing requirements. The Arduino manages these measurements while also controlling the LCD, LEDs, buzzer, and IoT Cloud connection.
+
+## Additional Sensor View
+
+![Sensors](images/Screenshot%202026-09-19%20193451.png)
+
+This view shows the physical sensor setup used for the system, including the temperature probe, water-level sensor, and other water-quality sensing components.
 
 ## Pin Configuration
 
-| Component | Pin |
+| Component | Arduino Pin |
 |---|---|
 | Temperature Sensor | D5 |
 | TDS Sensor | A1 |
 | Turbidity Sensor | A0 |
 | Water Level Sensor | A2 |
-| High Level LED | D2 |
-| Medium Level LED | D3 |
-| Low Level LED | D4 |
+| High Water Level LED | D2 |
+| Medium Water Level LED | D3 |
+| Low Water Level LED | D4 |
 | No Water LED | D6 |
 | Buzzer | D8 |
+| LCD | I2C |
 
-## TDS Processing
+## Data Filtering
 
-The TDS sensor is connected to analog pin A1.
+Analog sensor readings can fluctuate because of electrical noise and sensor instability.
 
-The program collects 10 ADC samples, sorts them, removes the two highest and two lowest values, and averages the remaining samples.
+To improve the stability of the TDS measurement, the system:
 
-Temperature compensation is then applied before calculating the final TDS value.
+1. Collects 10 ADC samples.
+2. Sorts the readings.
+3. Removes the two highest readings.
+4. Removes the two lowest readings.
+5. Averages the remaining six readings.
+6. Converts the averaged ADC value into voltage.
+7. Applies temperature compensation.
+8. Calculates the final TDS value.
 
-This filtering helps reduce instability caused by sensor noise and ADC fluctuations. :contentReference[oaicite:3]{index=3}
-
-## Turbidity Classification
-
-The turbidity sensor is connected to analog pin A0.
-
-The analog reading is converted into a percentage and classified as:
-
-| Turbidity | Status |
-|---|---|
-| Below 20% | CLEAR |
-| 20% to below 50% | CLOUDY |
-| 50% or higher | DIRTY |
-
-:contentReference[oaicite:4]{index=4}
-
-## Water Level Detection
-
-The water level sensor is connected to analog pin A2.
-
-The detected water level is classified using the following ranges:
-
-| Sensor Reading | Status |
-|---|---|
-| 100–310 | LOW |
-| 311–440 | MEDIUM |
-| 441–700 | HIGH |
-| Outside these ranges | No water |
-
-:contentReference[oaicite:5]{index=5}
+This helps reduce the effect of unusually high or low sensor readings.
 
 ## Warning System
 
-A buzzer is used to warn the user when abnormal readings are detected.
+The system includes a buzzer to warn the user when abnormal readings are detected.
 
-The warning is triggered when:
+A warning is triggered when:
 
-- TDS is 400 ppm or higher
-- Turbidity is 50% or higher
+- TDS reaches 400 ppm or higher.
+- Turbidity reaches 50% or higher.
 
 The buzzer produces two short beeps followed by one longer beep.
 
-A three-second cooldown prevents the buzzer from triggering continuously. :contentReference[oaicite:6]{index=6}
+A cooldown period prevents the warning sound from repeating continuously.
 
-## LCD Display
+## LED Indicators
 
-The LCD alternates between two screens every three seconds.
+Four LEDs provide a visual indication of the detected water level.
 
-### Screen 1
-- TDS value
-- TDS status
-- Turbidity percentage
-- Turbidity status
+| Water Level | Indicator |
+|---|---|
+| HIGH | Green LED |
+| MEDIUM | Yellow LED |
+| LOW | Red LED |
+| No Water | Blue LED |
 
-### Screen 2
-- Temperature
-- Water level
-
-:contentReference[oaicite:7]{index=7}
+Only the LED corresponding to the current water-level condition is activated.
 
 ## Arduino IoT Cloud
 
-The project uses Arduino IoT Cloud to provide remote monitoring of the sensor readings.
+![Arduino IoT Cloud Dashboard](images/Screenshot%202026-09-19%20193500.png)
 
-The Arduino continuously updates the cloud connection and synchronizes the monitored variables. :contentReference[oaicite:8]{index=8}
+The system is connected to the Arduino IoT Cloud through the Arduino UNO R4 WiFi.
 
-## Challenges
+The dashboard allows the sensor information to be monitored remotely.
 
-Some of the main challenges during development included:
+The monitored values include:
 
-- Sensor reading instability
-- Noise in analog measurements
-- Integrating multiple sensors on one Arduino
-- Different sensor timing requirements
-- Combining LCD output with cloud communication
+- Turbidity
+- TDS
+- Temperature
+- Water level
 
-Filtering, averaging, and temperature compensation were used to improve measurement stability. :contentReference[oaicite:9]{index=9}
+This provides both local monitoring through the LCD and remote monitoring through the IoT dashboard.
 
-## Applications
+## Software
 
-Possible applications include:
+The project was programmed using Arduino C++.
 
-- Drinking water monitoring
-- Aquaculture and fish farms
-- Industrial water management
-- River and lake monitoring
+The main libraries used are:
 
-:contentReference[oaicite:10]{index=10}
-
-## Future Improvements
-
-Possible future improvements include:
-
-- Adding a pH sensor
-- Improving sensor calibration
-- Adding automatic alerts
-- Improving wireless monitoring
-- Adding historical data visualization
+```cpp
+#include "thingProperties.h"
+#include <OneWire.h>
+#include <DallasTemperature.h>
+#include <LiquidCrystal_I2C.h>
