@@ -6,7 +6,7 @@ The system processes sensor readings, displays the results locally on an LCD, pr
 
 ## System Overview
 
-![Water Quality Monitoring System](images/IMG_0784.jpeg)
+![Water Quality Monitoring System](media/IMG_0784.jpeg)
 
 The system integrates multiple sensors with an Arduino UNO R4 WiFi to continuously monitor different water conditions.
 
@@ -36,7 +36,7 @@ The main components include:
 
 ## Hardware Prototype
 
-![Complete System](images/Screenshot%202026-09-19%20193431.png)
+![Complete System](media/Screenshot%202026-09-19%20193431.png)
 
 The prototype combines the sensors, Arduino board, LCD, LEDs, and buzzer into a single embedded monitoring system.
 
@@ -44,7 +44,7 @@ The Arduino continuously collects measurements from the sensors, processes them,
 
 ## LCD Output
 
-![LCD Output](images/IMG_0786.jpeg)
+![LCD Output](media/IMG_0786.jpeg)
 
 The LCD provides real-time feedback directly from the system.
 
@@ -113,7 +113,7 @@ The water level sensor detects the amount of water present and classifies it as:
 
 ## Sensor Setup
 
-![Sensor Setup](images/Screenshot%202026-09-19%20193451.png)
+![Sensor Setup](media/Screenshot%202026-09-19%20193451.png)
 
 The system uses separate sensors for different water measurements.
 
@@ -121,17 +121,28 @@ The TDS sensor measures dissolved solids, the turbidity sensor measures water cl
 
 ## Circuit and Hardware Integration
 
-![Circuit and Wiring](images/Screenshot%202026-09-19%20193442.png)
+![Circuit and Wiring](media/Screenshot%202026-09-19%20193442.png)
 
 One of the main parts of the project was integrating several sensors and outputs into one system.
 
 Each sensor has different reading and processing requirements. The Arduino manages these measurements while also controlling the LCD, LEDs, buzzer, and IoT Cloud connection.
 
-## Additional Sensor View
+## Arduino IoT Cloud
 
-![Sensors](images/Screenshot%202026-09-19%20193451.png)
+![Arduino IoT Cloud Dashboard](media/Screenshot%202026-09-19%20193500.png)
 
-This view shows the physical sensor setup used for the system, including the temperature probe, water-level sensor, and other water-quality sensing components.
+The system is connected to the Arduino IoT Cloud through the Arduino UNO R4 WiFi.
+
+The dashboard allows the sensor information to be monitored remotely.
+
+The monitored values include:
+
+- Turbidity
+- TDS
+- Temperature
+- Water level
+
+This provides both local monitoring through the LCD and remote monitoring through the IoT dashboard.
 
 ## Pin Configuration
 
@@ -190,23 +201,6 @@ Four LEDs provide a visual indication of the detected water level.
 | No Water | Blue LED |
 
 Only the LED corresponding to the current water-level condition is activated.
-
-## Arduino IoT Cloud
-
-![Arduino IoT Cloud Dashboard](images/Screenshot%202026-09-19%20193500.png)
-
-The system is connected to the Arduino IoT Cloud through the Arduino UNO R4 WiFi.
-
-The dashboard allows the sensor information to be monitored remotely.
-
-The monitored values include:
-
-- Turbidity
-- TDS
-- Temperature
-- Water level
-
-This provides both local monitoring through the LCD and remote monitoring through the IoT dashboard.
 
 ## Software
 
