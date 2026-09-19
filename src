@@ -1,0 +1,507 @@
+#include "thingProperties.h"
+#include <OneWire.h>
+#include <DallasTemperature.h>
+#include <LiquidCrystal_I2C.h>
+
+/* -------------------- SENSOR PINS -------------------- */
+#define TEMP_SENSOR_PIN 5
+#define TDS_SENSOR_PIN A1
+#define TURBIDITY_PIN A0
+#define WATER_LEVEL_PIN A2
+
+#define ADC_RESOLUTION 1024
+#define VREF 5.0f
+#define TDS_K 0.30f
+#define NUM_SAMPLES 10
+
+/* -------------------- LED PINS -------------------- */
+/* 2=Green(HIGH) 3=Yellow(MED) 4=Red(LOW) 6=Blue(No water) */
+#define LED_HIGH 2
+#define LED_MED 3
+#define LED_LOW 4
+#define LED_NOWTR 6
+
+/* -------------------- BUZZER PIN (LOW = ON) -------------------- */
+const int buzzerPin = 8;
+
+unsigned long lastBeep = 0;
+const unsigned long BEEP_COOLDOWN_MS = 3000; // at most one pattern / 3s
+
+OneWire oneWire(TEMP_SENSOR_PIN);
+DallasTemperature sensors(&oneWire);
+
+LiquidCrystal_I2C lcd(0x27, 2, 16);
+
+int tds_buf[NUM_SAMPLES];
+
+
+/* -------------------- FUNCTIONS -------------------- */
+
+float readTemperatureC() {
+  sensors.requestTemperatures();
+  return sensors.getTempCByIndex(0); // -127 if missing
+}
+
+
+void sortAscending(int *arr, size_t n) {
+  for (size_t i = 1; i < n; i++) {
+
+    int key = arr[i];
+    int j = (int)i - 1;
+
+    while (j >= 0 && arr[j] > key) {
+      arr[j + 1] = arr[j];
+      j--;
+    }
+
+    arr[j + 1] = key;
+  }
+}
+
+
+float readTdsPPM(float tempC) {
+
+  for (int i = 0; i < NUM_SAMPLES; i++) {
+    tds_buf[i] = analogRead(TDS_SENSOR_PIN);
+    delay(30);
+  }
+
+  sortAscending(tds_buf, NUM_SAMPLES);
+
+  unsigned long sum = 0;
+
+  for (int i = 2; i < NUM_SAMPLES - 2; i++) {
+    sum += tds_buf[i];
+  }
+
+  float avgAdc = sum / float(NUM_SAMPLES - 4);
+
+  float voltage = (avgAdc * VREF) / ADC_RESOLUTION;
+
+  // temperature compensation (assume 2%/°C)
+  float v = voltage / (1.0f + 0.02f * (tempC - 25.0f));
+
+  float tds =
+      (133.42f * v * v * v
+       - 255.86f * v * v
+       + 857.39f * v)
+      * TDS_K;
+
+  if (tds < 0) {
+    tds = 0;
+  }
+
+  return tds;
+}
+
+
+const char* waterLevelStatusFrom(int raw) {
+
+  if ((raw >= 100) && (raw <= 310)) {
+    return "LOW";
+  }
+
+  else if ((raw > 310) && (raw <= 440)) {
+    return "MEDIUM";
+  }
+
+  else if ((raw >= 441) && (raw <= 700)) {
+    return "HIGH";
+  }
+
+  else {
+    return "No water";
+  }
+}
+
+
+/* -------------------- SCREEN CONTROL -------------------- */
+
+enum Screen {
+  SHOW_TDS_TURB,
+  SHOW_TEMPERATURE
+};
+
+Screen screen = SHOW_TDS_TURB;
+
+unsigned long lastSwitch = 0;
+
+const unsigned long SCREEN_PERIOD_MS = 3000; // 3 seconds
+
+
+/* -------------------- BUZZER HELPERS -------------------- */
+
+void shortBeep() {
+
+  digitalWrite(buzzerPin, LOW); // ON
+  delay(120);
+
+  digitalWrite(buzzerPin, HIGH); // OFF
+  delay(120);
+}
+
+
+void longBeep() {
+
+  digitalWrite(buzzerPin, LOW); // ON
+  delay(300);
+
+  digitalWrite(buzzerPin, HIGH); // OFF
+}
+
+
+void warningBeepPattern() {
+
+  // Cute pattern: beep-beep ... BEEP
+  shortBeep();
+  shortBeep();
+
+  delay(200);
+
+  longBeep();
+}
+
+
+/* -------------------- SETUP -------------------- */
+
+void setup() {
+
+  Serial.begin(9600);
+
+  // Initialize Cloud
+  initProperties();
+
+  ArduinoCloud.begin(ArduinoIoTPreferredConnection);
+
+  // Sensors & pins
+  sensors.begin();
+
+  pinMode(TDS_SENSOR_PIN, INPUT);
+  pinMode(TURBIDITY_PIN, INPUT);
+  pinMode(WATER_LEVEL_PIN, INPUT);
+
+  pinMode(LED_HIGH, OUTPUT);
+  pinMode(LED_MED, OUTPUT);
+  pinMode(LED_LOW, OUTPUT);
+  pinMode(LED_NOWTR, OUTPUT);
+
+  digitalWrite(LED_HIGH, LOW);
+  digitalWrite(LED_MED, LOW);
+  digitalWrite(LED_LOW, LOW);
+  digitalWrite(LED_NOWTR, LOW);
+
+  // Buzzer (LOW = ON, HIGH = OFF)
+  pinMode(buzzerPin, OUTPUT);
+
+  digitalWrite(buzzerPin, HIGH); // start OFF
+
+#ifdef analogReadResolution
+  analogReadResolution(10);
+#endif
+
+  // LCD
+  lcd.init();
+  lcd.backlight();
+  lcd.clear();
+
+  wlStatus = "No water";
+  tdsPPM = 0.0f;
+  tForComp = 25.0f; // default temp
+  turbidity = 0.0f;
+
+  // Play cute warning pattern once at startup
+  warningBeepPattern();
+}
+
+
+/* -------------------- LOOP -------------------- */
+
+void loop() {
+
+  // Keep Cloud connection alive and sync variables
+  ArduinoCloud.update();
+
+
+  /* -------------------- TURBIDITY -------------------- */
+
+  (void)analogRead(TURBIDITY_PIN);
+
+  delay(5);
+
+  int turbRaw = analogRead(TURBIDITY_PIN);
+
+  int turbPct = map(
+    turbRaw,
+    0,
+    750,
+    100,
+    0
+  );
+
+  turbPct = constrain(
+    turbPct,
+    0,
+    100
+  );
+
+  const char* turbLabel =
+      (turbPct < 20)
+          ? "CLEAR"
+          : (turbPct < 50)
+                ? "CLOUDY"
+                : "DIRTY";
+
+  turbidity = (float)turbPct; // -> Cloud
+
+
+  /* -------------------- TEMPERATURE -------------------- */
+
+  float tC = readTemperatureC();
+
+  float tForCalc =
+      (tC == DEVICE_DISCONNECTED_C)
+          ? tForComp
+          : tC;
+
+  if (tC != DEVICE_DISCONNECTED_C) {
+
+    tForComp = tC; // RW Cloud variable follows sensor when valid
+  }
+
+
+  /* -------------------- TDS -------------------- */
+
+  tdsPPM = readTdsPPM(tForCalc);
+
+  const char* tdsLabel;
+
+  if (tdsPPM <= 150.0f) {
+
+    tdsLabel = "LOW";
+  }
+
+  else if (tdsPPM <= 300.0f) {
+
+    tdsLabel = "MEDIUM";
+  }
+
+  else if (tdsPPM >= 400.0f) {
+
+    tdsLabel = "HIGH";
+  }
+
+  else {
+
+    tdsLabel = "MEDIUM";
+  }
+
+
+  /* -------------------- WATER LEVEL -------------------- */
+
+  int waterRaw = analogRead(WATER_LEVEL_PIN);
+
+  wlStatus = waterLevelStatusFrom(waterRaw); // -> Cloud
+
+
+  /* -------------------- LED LOGIC -------------------- */
+
+  digitalWrite(LED_HIGH, LOW);
+  digitalWrite(LED_MED, LOW);
+  digitalWrite(LED_LOW, LOW);
+  digitalWrite(LED_NOWTR, LOW);
+
+  if (strcmp(
+          wlStatus.c_str(),
+          "LOW"
+      ) == 0) {
+
+    digitalWrite(LED_LOW, HIGH);
+  }
+
+  else if (strcmp(
+               wlStatus.c_str(),
+               "MEDIUM"
+           ) == 0) {
+
+    digitalWrite(LED_MED, HIGH);
+  }
+
+  else if (strcmp(
+               wlStatus.c_str(),
+               "HIGH"
+           ) == 0) {
+
+    digitalWrite(LED_HIGH, HIGH);
+  }
+
+  else {
+
+    digitalWrite(
+        LED_NOWTR,
+        HIGH
+    ); // "No water"
+  }
+
+
+  /* -------------------- BUZZER LOGIC -------------------- */
+
+  // "High risk" when turbidity is DIRTY or TDS is HIGH
+
+  bool tdsIsHigh =
+      (tdsPPM >= 400.0f);
+
+  bool turbIsHigh =
+      (turbPct >= 50); // same threshold that gives "DIRTY"
+
+  unsigned long now = millis();
+
+  if (
+      (tdsIsHigh || turbIsHigh)
+      &&
+      (now - lastBeep >= BEEP_COOLDOWN_MS)
+  ) {
+
+    warningBeepPattern();
+
+    // reset cooldown after pattern
+    lastBeep = millis();
+  }
+
+
+  /* -------------------- SERIAL OUTPUT -------------------- */
+
+  Serial.print("TDS=");
+  Serial.print((int)tdsPPM);
+
+  Serial.print("ppm(");
+  Serial.print(tdsLabel);
+  Serial.print(")");
+
+  Serial.print(" | Tur=");
+  Serial.print(turbPct);
+  Serial.print("% ");
+
+  Serial.print(turbLabel);
+
+  Serial.print(" | Temp=");
+  Serial.print(tForCalc, 2);
+  Serial.print("C");
+
+  Serial.print(" | WL Raw=");
+  Serial.print(waterRaw);
+
+  Serial.print(" | WL Status=");
+  Serial.println(wlStatus);
+
+
+  /* -------------------- SCREEN SWITCHING -------------------- */
+
+  if (
+      now - lastSwitch >= SCREEN_PERIOD_MS
+  ) {
+
+    screen =
+        (screen == SHOW_TDS_TURB)
+            ? SHOW_TEMPERATURE
+            : SHOW_TDS_TURB;
+
+    lastSwitch = now;
+
+    lcd.clear();
+  }
+
+
+  /* -------------------- RENDER CURRENT SCREEN -------------------- */
+
+  if (screen == SHOW_TDS_TURB) {
+
+    lcd.setCursor(0, 0);
+
+    lcd.print("TDS: ");
+    lcd.print((int)tdsPPM);
+    lcd.print("ppm ");
+    lcd.print(tdsLabel);
+
+    lcd.setCursor(0, 1);
+
+    lcd.print("Turb: ");
+
+    if (turbPct < 10) {
+      lcd.print(' ');
+    }
+
+    lcd.print(turbPct);
+    lcd.print("% ");
+    lcd.print(turbLabel);
+  }
+
+  else {
+
+    // Temperature & Water Level screen
+
+    lcd.setCursor(0, 0);
+
+    lcd.print("Temp: ");
+    lcd.print(tForCalc, 2);
+
+    lcd.print((char)223);
+    lcd.print("C ");
+
+    lcd.setCursor(0, 1);
+
+    lcd.print("Water Level:");
+
+    if (
+        strcmp(
+            wlStatus.c_str(),
+            "LOW"
+        ) == 0
+    ) {
+
+      lcd.print("LOW");
+    }
+
+    else if (
+        strcmp(
+            wlStatus.c_str(),
+            "MEDIUM"
+        ) == 0
+    ) {
+
+      lcd.print("MED ");
+    }
+
+    else if (
+        strcmp(
+            wlStatus.c_str(),
+            "HIGH"
+        ) == 0
+    ) {
+
+      lcd.print("HI ");
+    }
+
+    else {
+
+      lcd.print("NULL"); // No water / out of range
+    }
+  }
+
+  delay(150);
+}
+
+
+/* -------------------- CLOUD CALLBACK -------------------- */
+
+void onTForCompChange() {
+
+  // clamp remote dashboard edits to a sane range
+
+  if (tForComp < -10.0f) {
+    tForComp = -10.0f;
+  }
+
+  if (tForComp > 60.0f) {
+    tForComp = 60.0f;
+  }
+}
